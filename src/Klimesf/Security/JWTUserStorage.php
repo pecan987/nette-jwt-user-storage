@@ -101,6 +101,7 @@ class JWTUserStorage implements IUserStorage
 		$this->response = $response;
 		$this->jwtService = $jsonWebTokenService;
 		$this->identitySerializer = $identitySerializer;
+		$this->loadJWTCookie();
 	}
 
 	/**
@@ -140,7 +141,6 @@ class JWTUserStorage implements IUserStorage
 	 */
 	function isAuthenticated()
 	{
-		$this->loadJWTCookie();
 		return array_key_exists('is_authenticated', $this->jwtData) ? $this->jwtData['is_authenticated'] : false;
 	}
 
@@ -167,7 +167,6 @@ class JWTUserStorage implements IUserStorage
 	 */
 	function getIdentity()
 	{
-		$this->loadJWTCookie();
 		return $this->identitySerializer->deserialize($this->jwtData);
 	}
 
