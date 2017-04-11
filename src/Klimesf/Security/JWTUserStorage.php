@@ -82,6 +82,11 @@ class JWTUserStorage implements IUserStorage
 	 */
 	private $cookieSaved;
 
+    /**
+     * @var string
+     */
+	private $currentToken;
+
 	/**
 	 * JWTUserStorage constructor.
 	 * @param string               $privateKey
@@ -101,7 +106,11 @@ class JWTUserStorage implements IUserStorage
 		$this->response = $response;
 		$this->jwtService = $jsonWebTokenService;
 		$this->identitySerializer = $identitySerializer;
-		$this->loadJWTCookie();
+		$authorizationHeader = $this->request->getHeader('Authorization');
+		if($authorizationHeader) {
+            $this->jwtData = (array) $this->jwtService->decode(substr($authorizationHeader, 7), $this->privateKey, [$this->algorithm]);
+        }
+
 	}
 
 	/**
@@ -131,7 +140,6 @@ class JWTUserStorage implements IUserStorage
 		if (!$state) {
 			$this->logoutReason = self::MANUAL;
 		}
-		$this->saveJWTCookie();
 		return $this;
 	}
 
@@ -158,7 +166,6 @@ class JWTUserStorage implements IUserStorage
 			$this->jwtData,
 			$this->identitySerializer->serialize($identity)
 		);
-		$this->saveJWTCookie();
 	}
 
 	/**
@@ -185,7 +192,6 @@ class JWTUserStorage implements IUserStorage
 		} else {
 			unset($this->jwtData['exp']);
 		}
-		$this->saveJWTCookie();
 	}
 
 	/**
@@ -197,56 +203,20 @@ class JWTUserStorage implements IUserStorage
 		return $this->logoutReason;
 	}
 
-	/**
-	 * Saves the JWT Access Token into HTTP cookie.
-	 */
-	private function saveJWTCookie()
-	{
-		if (empty($this->jwtData)) {
-			$this->response->deleteCookie(self::COOKIE_NAME);
-			return;
-		}
+	public function getToken()
+    {
+        if ($this->generateIat) {
+            $this->jwtData['iat'] = DateTime::from('NOW')->format('U');
+        }
 
-		if ($this->generateIat) {
-			$this->jwtData['iat'] = DateTime::from('NOW')->format('U');
-		}
-
-		// Unset JTI if there was any
-		unset($this->jwtData['jti']);
-		if ($this->generateJti) {
-			// Generate new JTI
-			$this->jwtData['jti'] = hash('sha256', serialize($this->jwtData) . Random::generate(10));
-		}
-		// Encode the JWT and set the cookie
-		$jwt = $this->jwtService->encode($this->jwtData, $this->privateKey, $this->algorithm);
-		$this->response->setCookie(self::COOKIE_NAME, $jwt, $this->expirationTime);
-		$this->cookieSaved = true; // Set cookie saved flag to true, so loadJWTCookie() doesn't rewrite our data
-	}
-
-	/**
-	 * Loads JWT from HTTP cookie and stores the data into the $jwtData variable.
-	 * @return array|bool The JWT data as array or FALSE if there is no JWT cookie.
-	 */
-	private function loadJWTCookie()
-	{
-		if ($this->cookieSaved) {
-			return true;
-		}
-
-		$jwtCookie = $this->request->getCookie(self::COOKIE_NAME);
-		if (!$jwtCookie) {
-			$this->logoutReason = self::INACTIVITY | self::BROWSER_CLOSED;
-			return false;
-		}
-
-		try {
-			$this->jwtData = (array) $this->jwtService->decode($jwtCookie, $this->privateKey, [$this->algorithm]);
-
-		} catch (ExpiredException $e) {
-			$this->logoutReason = self::INACTIVITY;
-			return false;
-		}
-
-		return $this->jwtData;
-	}
+        // Unset JTI if there was any
+        unset($this->jwtData['jti']);
+        if ($this->generateJti) {
+            // Generate new JTI
+            $this->jwtData['jti'] = hash('sha256', serialize($this->jwtData) . Random::generate(10));
+        }
+        // Encode the JWT and set the cookie
+        $jwt = $this->jwtService->encode($this->jwtData, $this->privateKey, $this->algorithm);
+        return $jwt;
+    }
 }
